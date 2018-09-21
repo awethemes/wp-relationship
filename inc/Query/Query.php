@@ -39,7 +39,7 @@ class Query {
 
 		$fields             = "rel.$direction AS `rel_origin`";
 		$clauses['fields'] .= empty( $clauses['fields'] ) ? $fields : " , $fields";
-		$clauses['join']   .= " INNER JOIN `{$wpdb->prefix}{$storage->get_table_name()}` AS rel ON rel.$connected = $id_column";
+		$clauses['join']   .= " INNER JOIN `{$wpdb->p2p_relationships}` AS rel ON rel.$connected = $id_column";
 		$clauses['orderby'] = 't.term_id' === $id_column ? 'ORDER BY rel.id' : 'rel.id';
 
 		$where = sprintf(

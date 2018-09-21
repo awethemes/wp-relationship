@@ -1,5 +1,4 @@
 <?php
-
 namespace Awethemes\Relationships;
 
 use Awethemes\Relationships\Query\Normalizer;
@@ -44,6 +43,29 @@ class Manager {
 	protected $relationships = [];
 
 	/**
+	 * Indicator if the class was initialized.
+	 *
+	 * @var bool
+	 */
+	protected $initialized = false;
+
+	/**
+	 * Store the class instance.
+	 *
+	 * @var static
+	 */
+	protected static $instance;
+
+	/**
+	 * Get the class instance.
+	 *
+	 * @return static
+	 */
+	public static function get_instance() {
+		return self::$instance;
+	}
+
+	/**
 	 * Constructor.
 	 *
 	 * @param \Awethemes\Relationships\Storage                $storage           The storage.
@@ -52,15 +74,21 @@ class Manager {
 	 * @param string|null                                     $normalizer        The normalizer class name.
 	 */
 	public function __construct(
-		Storage $storage,
+		Storage $storage = null,
 		SideFactory $side_factory = null,
 		DirectionFactory $direction_factory = null,
 		$normalizer = null
 	) {
-		$this->storage           = $storage;
-		$this->side_factory      = ! is_null( $side_factory ) ? $side_factory : new SideFactory;
-		$this->direction_factory = ! is_null( $direction_factory ) ? $direction_factory : new DirectionFactory;
-		$this->normalizer        = ! is_null( $side_factory ) ? $normalizer : Normalizer::class;
+		if ( static::$instance ) {
+			throw new \RuntimeException( 'Use Manager::get_instance() instead!' );
+		}
+
+		$this->storage           = $storage ?: new Storage;
+		$this->side_factory      = $side_factory ?: new SideFactory;
+		$this->direction_factory = $direction_factory ?: new DirectionFactory;
+		$this->normalizer        = $normalizer ?: Normalizer::class;
+
+		static::$instance = $this;
 	}
 
 	/**
@@ -96,7 +124,11 @@ class Manager {
 	 * @return void
 	 */
 	public function init() {
-		if ( did_action( 'init' ) ) {
+		if ( $this->initialized ) {
+			return;
+		}
+
+		if ( false !== current_action() && did_action( 'init' ) ) {
 			trigger_error( 'Initialize the relationships should not be call before the \'init\' hook.', E_USER_WARNING );
 			return;
 		}
@@ -109,6 +141,10 @@ class Manager {
 		$normalizer = new $normalizer( $this );
 
 		( new Post_Query( $normalizer ) )->init();
+
+		$this->initialized = true;
+
+		dump( 1 );
 	}
 
 	/**

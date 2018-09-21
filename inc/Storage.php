@@ -3,22 +3,6 @@ namespace Awethemes\Relationships;
 
 class Storage {
 	/**
-	 * The database prefix.
-	 *
-	 * @var string
-	 */
-	protected $prefix;
-
-	/**
-	 * Constructor.
-	 *
-	 * @param string $prefix The database prefix.
-	 */
-	public function __construct( $prefix = 'awethemes_' ) {
-		$this->prefix = $prefix;
-	}
-
-	/**
 	 * Init the WP hooks.
 	 *
 	 * Call this method before the "init" hook.
@@ -48,11 +32,8 @@ class Storage {
 			$collate = $wpdb->get_charset_collate();
 		}
 
-		// Name of the relationship ID.
-		$relationship_id = $this->get_meta_type() . '_id';
-
 		dbDelta("
-CREATE TABLE {$wpdb->prefix}{$this->get_table_name()} (
+CREATE TABLE {$wpdb->prefix}p2p_relationships (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   type VARCHAR(42) NOT NULL DEFAULT '',
   rel_from BIGINT UNSIGNED NOT NULL,
@@ -62,15 +43,17 @@ CREATE TABLE {$wpdb->prefix}{$this->get_table_name()} (
   KEY rel_from (rel_from),
   KEY rel_to (rel_to)
 ) $collate;
-CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
+CREATE TABLE {$wpdb->prefix}p2p_relationshipmeta (
   meta_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  {$relationship_id} BIGINT UNSIGNED NOT NULL,
+  p2p_relationship_id BIGINT UNSIGNED NOT NULL,
   meta_key VARCHAR(191) default NULL,
   meta_value longtext NULL,
   PRIMARY KEY (meta_id),
-  KEY {$relationship_id} ({$relationship_id}),
+  KEY p2p_relationship_id (p2p_relationship_id),
   KEY meta_key (meta_key(32))
 ) $collate;");
+
+		dump($this);
 	}
 
 	/**
@@ -82,9 +65,51 @@ CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
 		global $wpdb;
 
 		// @codingStandardsIgnoreStart
-		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}{$this->get_table_name()}" );
-		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}{$this->get_meta_table_name()}" );
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}p2p_relationships" );
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}p2p_relationshipmeta" );
 		// @codingStandardsIgnoreEnd
+	}
+
+	/**
+	 * Register the tables into the $wpdb.
+	 *
+	 * @access private
+	 */
+	public function register_tables() {
+		global $wpdb;
+
+		$wpdb->tables[] = 'p2p_relationships';
+		$wpdb->p2p_relationships = $wpdb->prefix . 'p2p_relationships';
+
+		$wpdb->tables[] = 'p2p_relationshipmeta';
+		$wpdb->p2p_relationshipmeta = $wpdb->prefix . 'p2p_relationshipmeta';
+	}
+
+	/**
+	 * Uninstall tables when MU blog is deleted.
+	 *
+	 * @access private
+	 *
+	 * @param  array $tables List the tables to be deleted.
+	 * @return array
+	 */
+	public function wpmu_drop_tables( $tables ) {
+		global $wpdb;
+
+		$tables[] = $wpdb->prefix . 'p2p_relationships';
+		$tables[] = $wpdb->prefix . 'p2p_relationshipmeta';
+
+		return $tables;
+	}
+
+	/**
+	 * Perform delete relationship objects.
+	 *
+	 * @return void
+	 */
+	public function delete_relationship_objects() {
+		// TODO: ...
+		$object_type = str_replace( 'deleted_', '', current_action() );
 	}
 
 	/**
@@ -113,7 +138,7 @@ CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
 		}
 
 		$wpdb->insert(
-			$wpdb->prefix . $this->get_table_name(),
+			$wpdb->p2p_relationships,
 			[
 				'type'     => $type,
 				'rel_from' => $dirs[0],
@@ -145,10 +170,10 @@ CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
 		$ids = esc_sql( implode( ',', $ids ) );
 
 		// @codingStandardsIgnoreLine
-		$deleted = $wpdb->query( "DELETE FROM `{$wpdb->prefix}{$this->get_table_name()}` WHERE `id` IN ({$ids})" );
+		$deleted = $wpdb->query( "DELETE FROM `{$wpdb->p2p_relationships}` WHERE `id` IN ({$ids})" );
 
 		// @codingStandardsIgnoreLine
-		$wpdb->query( "DELETE FROM `{$wpdb->prefix}{$this->get_meta_table_name()}` WHERE `{$this->get_meta_type()}_id` IN ({$ids})" );
+		$wpdb->query( "DELETE FROM `{$wpdb->p2p_relationshipmeta}` WHERE `p2p_relationship_id` IN ({$ids})" );
 
 		return $deleted;
 	}
@@ -163,7 +188,7 @@ CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
 		global $wpdb;
 
 		// @codingStandardsIgnoreLine
-		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$wpdb->prefix}{$this->get_table_name()}` WHERE `id` = %d LIMIT 1", $id ), ARRAY_A );
+		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$wpdb->p2p_relationships}` WHERE `id` = %d LIMIT 1", $id ), ARRAY_A );
 	}
 
 	/**
@@ -283,7 +308,7 @@ CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
 		// Limit clause.
 		$limit = $args['limit'] > 0 ? "LIMIT ${args['limit']}" : '';
 
-		return "SELECT $select FROM {$wpdb->prefix}{$this->get_table_name()} $where $limit";
+		return "SELECT $select FROM {$wpdb->p2p_relationships} $where $limit";
 	}
 
 	/**
@@ -314,143 +339,5 @@ CREATE TABLE {$wpdb->prefix}{$this->get_meta_table_name()} (
 		}
 
 		return $conditions ? implode( ' AND ', $conditions ) : '';
-	}
-
-	/**
-	 * Add metadata for the specified object.
-	 *
-	 * @see add_metadata
-	 *
-	 * @param int    $object_id  ID of the object metadata is for.
-	 * @param string $meta_key   Metadata key.
-	 * @param mixed  $meta_value Metadata value. Must be serializable if non-scalar.
-	 * @param bool   $unique     Optional, default is false.
-	 * @return int|false The meta ID on success, false on failure.
-	 */
-	public function add_meta( $object_id, $meta_key, $meta_value, $unique = false ) {
-		return add_metadata( $this->get_meta_type(), $object_id, $meta_key, $meta_value, $unique );
-	}
-
-	/**
-	 * Retrieve metadata for the specified object.
-	 *
-	 * @see get_metadata
-	 *
-	 * @param int    $object_id ID of the object metadata is for.
-	 * @param string $meta_key  Optional. Metadata key.
-	 * @param bool   $single    Optional, default is false.
-	 *
-	 * @return mixed
-	 */
-	public function get_meta( $object_id, $meta_key = '', $single = false ) {
-		return get_metadata( $this->get_meta_type(), $object_id, $meta_key, $single );
-	}
-
-	/**
-	 * Update metadata for the specified object.
-	 *
-	 * If no value already exists for the specified object
-	 * ID and metadata key, the metadata will be added.
-	 *
-	 * @see update_metadata
-	 *
-	 * @param int    $object_id  ID of the object metadata is for.
-	 * @param string $meta_key   Metadata key.
-	 * @param mixed  $meta_value Metadata value. Must be serializable if non-scalar.
-	 *
-	 * @return int|bool
-	 */
-	public function update_meta( $object_id, $meta_key, $meta_value ) {
-		return update_metadata( $this->get_meta_type(), $object_id, $meta_key, $meta_value );
-	}
-
-	/**
-	 * Delete metadata for the specified object.
-	 *
-	 * @see delete_metadata
-	 *
-	 * @param int    $object_id  ID of the object metadata is for.
-	 * @param string $meta_key   Metadata key.
-	 * @param mixed  $meta_value Optional. Metadata value.
-	 * @param bool   $delete_all Optional, default is false.
-	 *
-	 * @return bool
-	 */
-	public function delete_meta( $object_id, $meta_key, $meta_value = '', $delete_all = false ) {
-		return delete_metadata( $this->get_meta_type(), $object_id, $meta_key, $meta_value, $delete_all );
-	}
-
-	/**
-	 * Register the tables into the $wpdb.
-	 *
-	 * @access private
-	 */
-	public function register_tables() {
-		global $wpdb;
-
-		$wpdb->tables[] = $this->get_meta_table_name();
-		$wpdb->{$this->get_meta_type()} = $wpdb->prefix . $this->get_meta_table_name();
-	}
-
-	/**
-	 * Uninstall tables when MU blog is deleted.
-	 *
-	 * @access private
-	 *
-	 * @param  array $tables List the tables to be deleted.
-	 * @return array
-	 */
-	public function wpmu_drop_tables( $tables ) {
-		global $wpdb;
-
-		$tables[] = $wpdb->prefix . $this->get_table_name();
-		$tables[] = $wpdb->prefix . $this->get_meta_table_name();
-
-		return $tables;
-	}
-
-	/**
-	 * Perform delete relationship objects.
-	 *
-	 * @return void
-	 */
-	public function delete_relationship_objects() {
-		$object_type = str_replace( 'deleted_', '', current_action() );
-	}
-
-	/**
-	 * Gets the prefix.
-	 *
-	 * @return string
-	 */
-	public function get_prefix() {
-		return $this->prefix;
-	}
-
-	/**
-	 * Gets the relationship meta type.
-	 *
-	 * @return string
-	 */
-	public function get_meta_type() {
-		return $this->prefix . 'relationship';
-	}
-
-	/**
-	 * Gets the relationship table name.
-	 *
-	 * @return string
-	 */
-	public function get_table_name() {
-		return $this->prefix . 'relationships';
-	}
-
-	/**
-	 * Gets the relationship meta table name.
-	 *
-	 * @return string
-	 */
-	public function get_meta_table_name() {
-		return $this->prefix . 'relationshipmeta';
 	}
 }

@@ -1,7 +1,5 @@
 <?php
 
-use Awethemes\Relationships\Storage;
-
 class Store_Test extends WP_UnitTestCase {
 	/* @var \Awethemes\Relationships\Storage */
 	protected $storage;
@@ -9,22 +7,14 @@ class Store_Test extends WP_UnitTestCase {
 	function setUp() {
 		parent::setUp();
 
-		$storage = new Storage( 'awebooking_' );
-		$storage->register_tables();
-
-		$this->storage = $storage;
-		$this->storage->install();
+		$this->storage = _get_rel_test()->get_storage();
 	}
 
 	public function testTablesExists() {
 		global $wpdb;
 
-		$this->assertEquals( 'awebooking_', $this->storage->get_prefix() );
-		$this->assertEquals( 'awebooking_relationships', $this->storage->get_table_name() );
-		$this->assertEquals( 'awebooking_relationshipmeta', $this->storage->get_meta_table_name() );
-
-		$this->assertContains( 'awebooking_relationshipmeta', $wpdb->tables );
-		$this->assertObjectHasAttribute( 'awebooking_relationship', $wpdb );
+		$this->assertContains( 'p2p_relationshipmeta', $wpdb->tables );
+		$this->assertObjectHasAttribute( 'p2p_relationships', $wpdb );
 	}
 
 	public function testCreate() {
@@ -105,13 +95,13 @@ class Store_Test extends WP_UnitTestCase {
 
 	protected function getRelation($id) {
 		global $wpdb;
-		return $wpdb->get_row( "SELECT * FROM `{$wpdb->prefix}{$this->storage->get_table_name()}` WHERE `id` = {$id}" );
+		return $wpdb->get_row( "SELECT * FROM `{$wpdb->p2p_relationships}` WHERE `id` = {$id}" );
 	}
 
 	protected function insertRelation($from, $to) {
 		global $wpdb;
 
-		$wpdb->query( "INSERT INTO `{$wpdb->prefix}{$this->storage->get_table_name()}` (`rel_from`, `rel_to`, `type`) VALUES ('{$from}', '{$from}', 'demo');" );
+		$wpdb->query( "INSERT INTO `{$wpdb->p2p_relationships}` (`rel_from`, `rel_to`, `type`) VALUES ('{$from}', '{$from}', 'demo');" );
 
 		$this->assertTrue( $wpdb->insert_id > 0 );
 

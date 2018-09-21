@@ -23,17 +23,18 @@ tests_add_filter( 'muplugins_loaded', function () {
 	require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 
 	_get_rel_test();
+
+	_get_rel_test()->get_storage()->install();
 });
 
 // Start up the WP testing environment.
 require $_tests_dir . '/includes/bootstrap.php';
 
-function _get_rel_test( ) {
+function _get_rel_test() {
 	static $rel;
 
 	if ( ! $rel ) {
-		$storage = new Storage( 'awebooking_' );
-		$rel = new Manager( $storage );
+		$rel = new Manager( new Storage );
 		$rel->init();
 	}
 

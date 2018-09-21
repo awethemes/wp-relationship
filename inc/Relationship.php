@@ -4,16 +4,6 @@ namespace Awethemes\Relationships;
 use WP_Error;
 use Awethemes\Relationships\Side\Side;
 
-/**
- * Main relationship class.
- *
- * @method int|false add_meta( $object_id, $meta_key, $meta_value, $unique = false )
- * @method mixed     get_meta( $object_id, $meta_key = '', $single = false )
- * @method int|bool  update_meta( $object_id, $meta_key, $meta_value )
- * @method bool      delete_meta( $object_id, $meta_key, $meta_value = '', $delete_all = false )
- *
- * @package Awethemes\Relationships
- */
 class Relationship {
 	/* Constants */
 	const DIRECTION_TO   = 'to';
@@ -361,19 +351,66 @@ class Relationship {
 	}
 
 	/**
-	 * Call to proxy methods.
+	 * Add metadata for the specified object.
 	 *
-	 * @param  string $name      The method name.
-	 * @param  array  $arguments The method arguments.
-	 * @return mixed
+	 * @see add_metadata
 	 *
-	 * @throws \BadFunctionCallException
+	 * @param int    $object_id  ID of the object metadata is for.
+	 * @param string $meta_key   Metadata key.
+	 * @param mixed  $meta_value Metadata value. Must be serializable if non-scalar.
+	 * @param bool   $unique     Optional, default is false.
+	 * @return int|false The meta ID on success, false on failure.
 	 */
-	public function __call( $name, $arguments ) {
-		if ( in_array( $name, static::$proxies ) ) {
-			return $this->{$name}( ...$arguments );
-		}
+	public function add_meta( $object_id, $meta_key, $meta_value, $unique = false ) {
+		return add_metadata( 'p2p_relationship', $object_id, $meta_key, $meta_value, $unique );
+	}
 
-		throw new \BadMethodCallException( sprintf( 'Method %s::%s does not exist.', static::class, $name ) );
+	/**
+	 * Retrieve metadata for the specified object.
+	 *
+	 * @see get_metadata
+	 *
+	 * @param int    $object_id ID of the object metadata is for.
+	 * @param string $meta_key  Optional. Metadata key.
+	 * @param bool   $single    Optional, default is false.
+	 *
+	 * @return mixed
+	 */
+	public function get_meta( $object_id, $meta_key = '', $single = false ) {
+		return get_metadata( 'p2p_relationship', $object_id, $meta_key, $single );
+	}
+
+	/**
+	 * Update metadata for the specified object.
+	 *
+	 * If no value already exists for the specified object
+	 * ID and metadata key, the metadata will be added.
+	 *
+	 * @see update_metadata
+	 *
+	 * @param int    $object_id  ID of the object metadata is for.
+	 * @param string $meta_key   Metadata key.
+	 * @param mixed  $meta_value Metadata value. Must be serializable if non-scalar.
+	 *
+	 * @return int|bool
+	 */
+	public function update_meta( $object_id, $meta_key, $meta_value ) {
+		return update_metadata( 'p2p_relationship', $object_id, $meta_key, $meta_value );
+	}
+
+	/**
+	 * Delete metadata for the specified object.
+	 *
+	 * @see delete_metadata
+	 *
+	 * @param int    $object_id  ID of the object metadata is for.
+	 * @param string $meta_key   Metadata key.
+	 * @param mixed  $meta_value Optional. Metadata value.
+	 * @param bool   $delete_all Optional, default is false.
+	 *
+	 * @return bool
+	 */
+	public function delete_meta( $object_id, $meta_key, $meta_value = '', $delete_all = false ) {
+		return delete_metadata( 'p2p_relationship', $object_id, $meta_key, $meta_value, $delete_all );
 	}
 }

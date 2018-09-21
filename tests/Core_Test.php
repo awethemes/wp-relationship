@@ -173,6 +173,6 @@ class Core_Test extends WP_UnitTestCase {
 	public function debug() {
 		global $wpdb;
 
-		return $wpdb->get_results("SELECT * FROM {$wpdb->prefix}{$this->storage->get_table_name()}");
+		return $wpdb->get_results("SELECT * FROM {$wpdb->p2p_relationships}");
 	}
 }
