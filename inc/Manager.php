@@ -143,8 +143,6 @@ class Manager {
 		( new Post_Query( $normalizer ) )->init();
 
 		$this->initialized = true;
-
-		dump( 1 );
 	}
 
 	/**

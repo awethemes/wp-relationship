@@ -52,8 +52,6 @@ CREATE TABLE {$wpdb->prefix}p2p_relationshipmeta (
   KEY p2p_relationship_id (p2p_relationship_id),
   KEY meta_key (meta_key(32))
 ) $collate;");
-
-		dump($this);
 	}
 
 	/**
