@@ -3,24 +3,17 @@ namespace Awethemes\Relationships;
 
 use WP_Error;
 use Awethemes\Relationships\Side\Side;
+use Awethemes\Relationships\Direction\Direction;
 
 class Relationship {
 	/* Constants */
 	const DIRECTION_TO   = 'to';
 	const DIRECTION_ANY  = 'any';
 	const DIRECTION_FROM = 'from';
-
 	const ONE_TO_ONE     = 'one-to-one';
 	const ONE_TO_MANY    = 'one-to-many';
 	const MANY_TO_ONE    = 'many-to-one';
 	const MANY_TO_MANY   = 'many-to-many';
-
-	/**
-	 * The storage instance.
-	 *
-	 * @var \Awethemes\Relationships\Manager
-	 */
-	protected $manager;
 
 	/**
 	 * The relationship name.
@@ -34,7 +27,7 @@ class Relationship {
 	 *
 	 * @var \Awethemes\Relationships\Direction\Direction
 	 */
-	protected $strategy;
+	protected $direction;
 
 	/**
 	 * The "from side" object instance.
@@ -55,7 +48,32 @@ class Relationship {
 	 *
 	 * @var array
 	 */
-	protected $options = [
+	protected $options = [];
+
+	/**
+	 * The storage instance.
+	 *
+	 * @var \Awethemes\Relationships\Manager
+	 */
+	protected $manager;
+
+	/**
+	 * An array of valid directions.
+	 *
+	 * @var array
+	 */
+	public static $valid_directions = [
+		self::DIRECTION_TO,
+		self::DIRECTION_ANY,
+		self::DIRECTION_FROM,
+	];
+
+	/**
+	 * An array of default options.
+	 *
+	 * @var array
+	 */
+	public static $default_options = [
 		'cardinality'           => 'many-to-many',
 		'reciprocal'            => false,
 		'self_connections'      => false,
@@ -63,48 +81,21 @@ class Relationship {
 	];
 
 	/**
-	 * List of proxies methods.
-	 *
-	 * @var array
-	 */
-	protected static $proxies = [
-		// @codingStandardsIgnoreLine
-		'add_meta', 'get_meta', 'update_meta', 'delete_meta'
-	];
-
-	/**
-	 * The valid directions.
-	 *
-	 * @var array
-	 */
-	protected static $directions = [
-		self::DIRECTION_TO,
-		self::DIRECTION_ANY,
-		self::DIRECTION_FROM,
-	];
-
-	/**
 	 * Constructor.
 	 *
-	 * @param \Awethemes\Relationships\Manager   $manager The manager instance.
-	 * @param string                             $name    The relationship name.
-	 * @param \Awethemes\Relationships\Side\Side $from    The from side.
-	 * @param \Awethemes\Relationships\Side\Side $to      The to side.
-	 * @param array                              $options The relationship options.
+	 * @param string                                       $name      The relationship name.
+	 * @param \Awethemes\Relationships\Direction\Direction $direction The direction implementation.
+	 * @param \Awethemes\Relationships\Side\Side           $from      The from side instance.
+	 * @param \Awethemes\Relationships\Side\Side           $to        The to side instance.
+	 * @param array                                        $options   The relationship options.
 	 */
-	public function __construct( Manager $manager, $name, Side $from, Side $to, $options = [] ) {
-		$this->manager = $manager;
-
-		$this->name = $name;
-		$this->to   = $to;
-		$this->from = $from;
-
-		$this->options = wp_parse_args( $options, $this->options );
-		$this->set_cardinality( $this->options['cardinality'] );
-
-		$this->strategy = $manager
-			->get_direction_factory()
-			->create( $from, $to, $this->options['reciprocal'] );
+	public function __construct( $name, Direction $direction, Side $from, Side $to, $options = [] ) {
+		$this->name      = $name;
+		$this->direction = $direction;
+		$this->from      = $from;
+		$this->to        = $to;
+		$this->options   = $options;
+		$this->parse_cardinality( $this->options['cardinality'] );
 	}
 
 	/**
@@ -123,6 +114,25 @@ class Relationship {
 	 */
 	public function get_storage() {
 		return $this->manager->get_storage();
+	}
+
+	public function get_connected( $item ) {
+		$ids = $this->get_storage()->find( $this->get_name(), [
+			'from'   => $item,
+			'column' => 'rel_to',
+		] );
+
+		return wp_list_pluck( $ids, 'rel_to' );
+	}
+
+	/**
+	 * Returns connections in a relationship.
+	 *
+	 * @param array $args The query args.
+	 * @return array|null|object
+	 */
+	public function find( $args = [] ) {
+		return $this->get_storage()->find( $this->get_name(), $args );
 	}
 
 	/**
@@ -145,6 +155,21 @@ class Relationship {
 		] );
 
 		return $count > 0;
+	}
+
+	/**
+	 * Sync the intermediate tables with a list of IDs or collection of models.
+	 *
+	 * @param  mixed $ids
+	 * @param  bool  $detaching
+	 * @return array
+	 */
+	public function sync( $ids, $detaching = true ) {
+		$changes = [
+			'attached' => [],
+			'detached' => [],
+			'updated'  => [],
+		];
 	}
 
 	/**
@@ -301,7 +326,7 @@ class Relationship {
 	public function find_direction( $object ) {
 		foreach ( [ 'from', 'to' ] as $direction ) {
 			if ( $object_id = $this->get_side( $direction )->parse_object_id( $object ) ) {
-				return $this->strategy->choose_direction( $direction );
+				return $this->direction->choose_direction( $direction );
 			}
 		}
 	}
@@ -315,11 +340,11 @@ class Relationship {
 	 * @throws \OutOfBoundsException
 	 */
 	public function get_direction( $direction = 'from' /* self::DIRECTION_FROM */ ) {
-		if ( ! in_array( $direction, static::$directions ) ) {
-			throw new \OutOfBoundsException( 'Invalid direction. The direction must be one of: ' . implode( ', ', static::$directions ) . '.' );
+		if ( ! in_array( $direction, static::$valid_directions ) ) {
+			throw new \OutOfBoundsException( 'Invalid direction. The direction must be one of: ' . implode( ', ', static::$valid_directions ) . '.' );
 		}
 
-		$class = $this->strategy->get_directed_class();
+		$class = $this->direction->get_directed_class();
 
 		return new $class( $this, $direction );
 	}
@@ -330,7 +355,7 @@ class Relationship {
 	 * @return string
 	 */
 	public function get_describe() {
-		return sprintf( '%s %s %s', $this->from->get_label(), $this->strategy->get_arrow(), $this->to->get_label() );
+		return sprintf( '%s %s %s', $this->from->get_label(), $this->direction->get_arrow(), $this->to->get_label() );
 	}
 
 	/**
@@ -340,7 +365,7 @@ class Relationship {
 	 *
 	 * @throws \InvalidArgumentException
 	 */
-	protected function set_cardinality( $cardinality ) {
+	protected function parse_cardinality( $cardinality ) {
 		if ( preg_match( '/^(one|many)-to-(one|many)$/i', $cardinality, $matches ) ) {
 			$this->from->set_cardinality( $matches[1] );
 			$this->to->set_cardinality( $matches[2] );
@@ -353,7 +378,7 @@ class Relationship {
 	/**
 	 * Add metadata for the specified object.
 	 *
-	 * @see add_metadata
+	 * @see add_metadata()
 	 *
 	 * @param int    $object_id  ID of the object metadata is for.
 	 * @param string $meta_key   Metadata key.
@@ -368,7 +393,7 @@ class Relationship {
 	/**
 	 * Retrieve metadata for the specified object.
 	 *
-	 * @see get_metadata
+	 * @see get_metadata()
 	 *
 	 * @param int    $object_id ID of the object metadata is for.
 	 * @param string $meta_key  Optional. Metadata key.
@@ -386,7 +411,7 @@ class Relationship {
 	 * If no value already exists for the specified object
 	 * ID and metadata key, the metadata will be added.
 	 *
-	 * @see update_metadata
+	 * @see update_metadata()
 	 *
 	 * @param int    $object_id  ID of the object metadata is for.
 	 * @param string $meta_key   Metadata key.
@@ -401,7 +426,7 @@ class Relationship {
 	/**
 	 * Delete metadata for the specified object.
 	 *
-	 * @see delete_metadata
+	 * @see delete_metadata()
 	 *
 	 * @param int    $object_id  ID of the object metadata is for.
 	 * @param string $meta_key   Metadata key.
@@ -412,5 +437,26 @@ class Relationship {
 	 */
 	public function delete_meta( $object_id, $meta_key, $meta_value = '', $delete_all = false ) {
 		return delete_metadata( 'p2p_relationship', $object_id, $meta_key, $meta_value, $delete_all );
+	}
+
+	/**
+	 * Returns the relationships manager instance.
+	 *
+	 * @return \Awethemes\Relationships\Manager
+	 */
+	public function get_manager() {
+		return $this->manager;
+	}
+
+	/**
+	 * Sets the relationships manager.
+	 *
+	 * @param  \Awethemes\Relationships\Manager $manager The relationships manager.
+	 * @return $this
+	 */
+	public function set_manager( Manager $manager ) {
+		$this->manager = $manager;
+
+		return $this;
 	}
 }

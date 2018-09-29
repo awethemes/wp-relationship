@@ -62,6 +62,10 @@ class Manager {
 	 * @return static
 	 */
 	public static function get_instance() {
+		if ( ! static::$instance ) {
+			static::$instance = new static;
+		}
+
 		return self::$instance;
 	}
 
@@ -181,9 +185,18 @@ class Manager {
 	 */
 	public function register( $name, $from, $to, $options = [] ) {
 		$side_from = $this->create_side( $from, Relationship::DIRECTION_FROM );
-		$side_to   = $this->create_side( $to, Relationship::DIRECTION_TO );
 
-		$relationship = new Relationship( $this, $name, $side_from, $side_to, $options );
+		$side_to = $this->create_side( $to, Relationship::DIRECTION_TO );
+
+		$options = wp_parse_args( $options, Relationship::$default_options );
+
+		$strategy = $this
+			->get_direction_factory()
+			->create( $side_from, $side_to, isset( $options['reciprocal'] ) ? $options['reciprocal'] : false );
+
+		$relationship = new Relationship( $name, $strategy, $side_from, $side_to, $options );
+
+		$relationship->set_manager( $this );
 
 		return $this->relationships[ $name ] = $relationship;
 	}

@@ -37,10 +37,12 @@ class Post_Query {
 	 */
 	public function parse_query( $query ) {
 		if ( ! $args = $query->get( 'relationship' ) ) {
+			unset( $query->query_vars['relationship'] );
 			return;
 		}
 
 		if ( ! $normalized = $this->normalizer->normalize( $args ) ) {
+			unset( $query->query_vars['relationship'] );
 			return;
 		}
 

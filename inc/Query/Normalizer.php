@@ -27,7 +27,7 @@ class Normalizer {
 	 * @return \Awethemes\Relationships\Query\Normalized|null
 	 */
 	public function normalize( $args ) {
-		if ( isset( $args['name'] ) || ! $relation = $this->manager->get( $args['name'] ) ) {
+		if ( ! isset( $args['name'] ) || ! $relation = $this->manager->get( $args['name'] ) ) {
 			return null;
 		}
 
