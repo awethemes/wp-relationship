@@ -1,6 +1,9 @@
 <?php
 namespace Awethemes\Relationships;
 
+use Database\Query\Builder;
+use Awethemes\Database\Database;
+
 class Storage {
 	/**
 	 * Init the WP hooks.
@@ -35,9 +38,9 @@ class Storage {
 		dbDelta("
 CREATE TABLE {$wpdb->prefix}p2p_relationships (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  type VARCHAR(42) NOT NULL DEFAULT '',
   rel_from BIGINT UNSIGNED NOT NULL,
   rel_to BIGINT UNSIGNED NOT NULL,
+  type VARCHAR(42) NOT NULL DEFAULT '',
   PRIMARY KEY (id),
   KEY type (type),
   KEY rel_from (rel_from),
@@ -121,8 +124,6 @@ CREATE TABLE {$wpdb->prefix}p2p_relationshipmeta (
 	 * @return bool|int
 	 */
 	public function create( $type, $from, $to, $direction = Relationship::DIRECTION_FROM ) {
-		global $wpdb;
-
 		$dirs = array_filter(
 			array_map( [ Utils::class, 'parse_object_id' ], [ $from, $to ] )
 		);
@@ -135,45 +136,35 @@ CREATE TABLE {$wpdb->prefix}p2p_relationshipmeta (
 			$dirs = array_reverse( $dirs );
 		}
 
-		$wpdb->insert(
-			$wpdb->p2p_relationships,
-			[
-				'type'     => $type,
-				'rel_from' => $dirs[0],
-				'rel_to'   => $dirs[1],
-			],
-			[
-				'%s',
-				'%d',
-				'%d',
-			]
-		);
-
-		return $wpdb->insert_id;
+		return $this->new_query()->insertGetId( [
+			'type'     => $type,
+			'rel_from' => $dirs[0],
+			'rel_to'   => $dirs[1],
+		] );
 	}
 
 	/**
 	 * Delete a relationship by given IDs.
 	 *
 	 * @param  string|array $ids The relationship ids.
-	 * @return int|bool
+	 * @return int|false
 	 */
 	public function delete( $ids ) {
-		global $wpdb;
+		$ids = wp_parse_id_list( $ids );
 
-		if ( empty( $ids = wp_parse_id_list( $ids ) ) ) {
+		if ( empty( $ids ) ) {
 			return false;
 		}
 
-		$ids = esc_sql( implode( ',', $ids ) );
+		$deleted = $this->new_query()->whereIn( 'id', $ids )->delete();
 
-		// @codingStandardsIgnoreLine
-		$deleted = $wpdb->query( "DELETE FROM `{$wpdb->p2p_relationships}` WHERE `id` IN ({$ids})" );
+		if ( $deleted > 0 ) {
+			$this->new_query( 'p2p_relationshipmeta' )->whereIn( 'p2p_relationship_id', $ids )->delete();
 
-		// @codingStandardsIgnoreLine
-		$wpdb->query( "DELETE FROM `{$wpdb->p2p_relationshipmeta}` WHERE `p2p_relationship_id` IN ({$ids})" );
+			return $deleted;
+		}
 
-		return $deleted;
+		return false;
 	}
 
 	/**
@@ -183,10 +174,7 @@ CREATE TABLE {$wpdb->prefix}p2p_relationshipmeta (
 	 * @return array|null
 	 */
 	public function get( $id ) {
-		global $wpdb;
-
-		// @codingStandardsIgnoreLine
-		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `{$wpdb->p2p_relationships}` WHERE `id` = %d LIMIT 1", $id ), ARRAY_A );
+		return $this->new_query()->find( $id ) ?: null;
 	}
 
 	/**
@@ -198,144 +186,102 @@ CREATE TABLE {$wpdb->prefix}p2p_relationshipmeta (
 	 * @return array|null
 	 */
 	public function first( $type, $args = [] ) {
-		global $wpdb;
-
-		$query = $this->build_query_connections( $type, array_merge( $args, [
-			'limit' => 1,
-		] ) );
-
-		// @codingStandardsIgnoreLine
-		return $wpdb->get_row( $query, ARRAY_A );
+		return $this->new_connection_query( $type, $args )->first();
 	}
 
 	/**
 	 * Returns connections in a relationship.
 	 *
-	 * @param string $type The relationship name.
-	 * @param array  $args The query args.
-	 *
-	 * @return array|null|object
+	 * @param  string $type The relationship name.
+	 * @param  array  $args The query args.
+	 * @return array
 	 */
 	public function find( $type, $args = [] ) {
-		global $wpdb;
-
-		// @codingStandardsIgnoreLine
-		return $wpdb->get_results( $this->build_query_connections( $type, $args ), ARRAY_A );
+		return $this->new_connection_query( $type, $args )->get();
 	}
 
 	/**
 	 * Returns number of connections in a relationship.
 	 *
-	 * @param string $type The relationship name.
-	 * @param array  $args The query args.
-	 *
-	 * @return mixed
+	 * @param  string $type The relationship name.
+	 * @param  array  $args The query args.
+	 * @return int
 	 */
 	public function count( $type, $args = [] ) {
-		global $wpdb;
-
-		$query = $this->build_query_connections( $type, array_merge( $args, [
-			'column' => 'count',
-		] ) );
-
-		// @codingStandardsIgnoreLine
-		return $wpdb->get_var( $query );
+		return $this->new_connection_query( $type, $args )->count();
 	}
 
 	/**
-	 * Build the query to retrieve connections.
+	 * Return new query builder of a table.
+	 *
+	 * @param  string|null $table The table name.
+	 * @return \Awethemes\Database\Builder
+	 */
+	public function new_query( $table = 'p2p_relationships' ) {
+		return $table ? Database::table( $table ) : Database::newQuery();
+	}
+
+	/**
+	 * Create new query to retrieve connections.
 	 *
 	 * @param string $type The relationship name.
 	 * @param array  $args The query args.
 	 *
-	 * @return string
+	 * @return \Database\Query\Builder
 	 */
-	protected function build_query_connections( $type, $args = [] ) {
-		global $wpdb;
-
+	public function new_connection_query( $type, $args = [] ) {
 		$args = wp_parse_args( $args, [
 			'from'      => '*',
 			'to'        => '*',
 			'limit'     => -1,
-			'column'    => 'all',
 			'direction' => Relationship::DIRECTION_FROM,
 		] );
 
-		// Where clause.
-		$where = $wpdb->prepare( 'WHERE `type` = %s', $type );
+		// Begin the the query builder.
+		$query = $this->new_query()->where( 'type', '=', $type );
 
-		// Parse the direction to using.
-		$directions = Relationship::DIRECTION_ANY === $args['direction']
-			? [ Relationship::DIRECTION_FROM, Relationship::DIRECTION_TO ]
-			: [ $args['direction'] ];
-
-		$rel_where = [];
-
-		foreach ( $directions as $_direction ) {
-			$_dirs = [ $args['from'], $args['to'] ];
-
-			if ( Relationship::DIRECTION_TO === $_direction ) {
-				$_dirs = array_reverse( $_dirs );
+		// Filter values for the relation conditions.
+		$vars = array_map( function ( $value ) {
+			if ( is_null( $value ) || in_array( $value, [ 'any', '*' ] ) ) {
+				return null;
 			}
 
-			if ( $_where_caluse = $this->build_rel_where_clause( $_dirs[0], $_dirs[1] ) ) {
-				$rel_where[] = '(' . $_where_caluse . ')';
-			}
+			return wp_parse_id_list( $value ) ?: null;
+		}, Utils::array_only( $args, [ 'from', 'to' ] ) );
+
+		if ( $vars['from'] || $vars['to'] ) {
+			$directions = Utils::expand_direction( $args['direction'] );
+
+			$query->where( function ( Builder $query ) use ( $directions, $vars ) {
+				foreach ( $directions as $direction ) {
+					$_vars = array_values( $vars );
+
+					if ( Relationship::DIRECTION_TO === $direction ) {
+						$_vars = array_reverse( $_vars );
+					}
+
+					$this->apply_relation_conditions( $query, $_vars[0], $_vars[1] );
+				}
+			} );
 		}
 
-		if ( count( $rel_where ) > 0 ) {
-			$where .= ' AND ' . implode( ' OR ', $rel_where );
-		}
-
-		// Select column clause.
-		switch ( $args['column'] ) {
-			case 'count':
-				$select = 'COUNT(*) as count';
-				break;
-
-			case '*':
-			case 'all':
-				$select = '*';
-				break;
-
-			default:
-				$select = $args['column'];
-				break;
-		}
-
-		// Limit clause.
-		$limit = $args['limit'] > 0 ? "LIMIT ${args['limit']}" : '';
-
-		return "SELECT $select FROM {$wpdb->p2p_relationships} $where $limit";
+		return $query->limit( $args['limit'] );
 	}
 
 	/**
-	 * Build relashiship where query.
+	 * Apply the relation where conditions.
 	 *
-	 * @param int|array $rel_from The "from" ids.
-	 * @param int|array $rel_to   The "to" ids.
-	 *
-	 * @return string
+	 * @param \Database\Query\Builder $builder The query builder instance.
+	 * @param array|null              $from    The from items.
+	 * @param array|null              $to      The to items.
 	 */
-	protected function build_rel_where_clause( $rel_from, $rel_to ) {
-		global $wpdb;
+	protected function apply_relation_conditions( Builder $builder, $from, $to ) {
+		$vars = array_filter( compact( 'from', 'to' ) );
 
-		$conditions = [];
-
-		foreach ( compact( 'rel_from', 'rel_to' ) as $key => $value ) {
-			if ( empty( $value ) || in_array( $value, [ 'any', '*' ] ) ) {
-				continue;
+		$builder->orWhere( function ( Builder $query ) use ( $vars ) {
+			foreach ( $vars as $key => $value ) {
+				$query->whereIn( "rel_{$key}", wp_parse_id_list( $value ) );
 			}
-
-			$ids = Utils::parse_sql_ids( $value );
-
-			if ( is_numeric( $ids ) ) {
-				$conditions[] = $wpdb->prepare( "`{$key}` = %d", $ids ); // @codingStandardsIgnoreLine
-			} else {
-				$conditions[] = "`{$key}` IN ({$ids})";
-			}
-		}
-
-		return $conditions ? implode( ' AND ', $conditions ) : '';
+		} );
 	}
 }

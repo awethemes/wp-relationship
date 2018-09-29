@@ -1,5 +1,5 @@
 <?php
-
+// 0961496217
 class Store_Test extends WP_UnitTestCase {
 	/* @var \Awethemes\Relationships\Storage */
 	protected $storage;
@@ -10,11 +10,52 @@ class Store_Test extends WP_UnitTestCase {
 		$this->storage = _get_rel_test()->get_storage();
 	}
 
+	public function testBuilder() {
+		// dump( $this->storage->new_query() );
+	}
+
 	public function testTablesExists() {
 		global $wpdb;
 
 		$this->assertContains( 'p2p_relationshipmeta', $wpdb->tables );
 		$this->assertObjectHasAttribute( 'p2p_relationships', $wpdb );
+	}
+
+	/**
+	 * @dataProvider getDataQueryBuilder
+	 */
+	public function testQueryBuilder($from = '*', $to = '*', $direction = 'any', $whereQuery = '') {
+		global $wpdb;
+
+		$builder = $this->storage->new_connection_query( 'post_to_post', [
+			'from'      => $from,
+			'to'        => $to,
+			'direction' => $direction,
+		] );
+
+		$this->assertEquals( "select * from `{$wpdb->prefix}p2p_relationships` where `type` = %s" . $whereQuery, $builder->toSql() );
+	}
+
+	public function getDataQueryBuilder() {
+		return [
+			// Any direction
+			[ '*', '*', 'any' ],
+			[ '1', '*', 'any', ' and ((`rel_from` in (%d)) or (`rel_to` in (%d)))' ],
+			[ '*', '1', 'any', ' and ((`rel_to` in (%d)) or (`rel_from` in (%d)))' ],
+			[[1, 2, 3], '4, 5',  'any', ' and ((`rel_from` in (%d, %d, %d) and `rel_to` in (%d, %d)) or (`rel_from` in (%d, %d) and `rel_to` in (%d, %d, %d)))'],
+
+			// From direction
+			[ '*', '*', 'from' ],
+			[ '1', '*', 'from', ' and ((`rel_from` in (%d)))' ],
+			[ '*', '1', 'from', ' and ((`rel_to` in (%d)))' ],
+			[ [1, 2, 3], '4, 5', 'from', ' and ((`rel_from` in (%d, %d, %d) and `rel_to` in (%d, %d)))' ],
+
+			// To direction
+			[ '*', '*', 'to' ],
+			[ '1, 2', '*', 'to', ' and ((`rel_to` in (%d, %d)))' ],
+			[ '*', '1, 2', 'to', ' and ((`rel_from` in (%d, %d)))' ],
+			[ [1, 2, 3], '4, 5', 'to', ' and ((`rel_from` in (%d, %d) and `rel_to` in (%d, %d, %d)))' ],
+		];
 	}
 
 	public function testCreate() {
@@ -41,7 +82,10 @@ class Store_Test extends WP_UnitTestCase {
 		$data = (array) $this->getRelation( $id );
 		$assertData = $this->storage->get( $id );
 
+		$this->assertInternalType( 'array', $assertData );
+		$this->assertArrayHasKey( 'id', $assertData );
 		$this->assertEquals( $data, $assertData );
+
 		$this->assertNull( $this->storage->get( 0 ) );
 	}
 
