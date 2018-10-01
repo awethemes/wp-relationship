@@ -31,7 +31,6 @@ class Query {
 	public function alter_clauses( &$clauses, $id_column ) {
 		global $wpdb;
 
-		$storage  = $this->attributes->get_relation()->get_storage();
 		$items = (array) $this->attributes->get_items();
 
 		$direction = Relationship::DIRECTION_FROM === $this->attributes->get_direction() ? 'rel_from' : 'rel_to';

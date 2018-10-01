@@ -129,7 +129,7 @@ class Core_Test extends WP_UnitTestCase {
 		$this->assertEquals( 'movie', $directed_from->get_opposite()->get_post_type() );
 		$this->assertEquals( 'many', $directed_from->get_opposite()->get_cardinality() );
 
-		$flip_directed_from = $directed_from->flip_direction();
+		$flip_directed_from = $directed_from->flip();
 		$this->assertEquals( 'movie', $flip_directed_from->get_current()->get_post_type() );
 		$this->assertEquals( 'many', $flip_directed_from->get_current()->get_cardinality() );
 		$this->assertEquals( 'director', $flip_directed_from->get_opposite()->get_post_type() );

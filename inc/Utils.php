@@ -14,24 +14,6 @@ class Utils {
 	}
 
 	/**
-	 * Expand the "any" direction if given.
-	 *
-	 * @param  string $direction The direction name.
-	 * @return array
-	 */
-	public static function expand_direction( $direction ) {
-		if ( ! in_array( $direction, Relationship::$valid_directions ) ) {
-			throw new \OutOfBoundsException( 'Invalid direction. The direction must be one of: ' . implode( ', ', Relationship::$valid_directions ) . '.' );
-		}
-
-		if ( Relationship::DIRECTION_ANY === $direction ) {
-			return [ Relationship::DIRECTION_FROM, Relationship::DIRECTION_TO ];
-		}
-
-		return [ $direction ];
-	}
-
-	/**
 	 * Parse IDs for sql.
 	 *
 	 * @param mixed $ids The ids.
@@ -69,5 +51,36 @@ class Utils {
 		}
 
 		return 0;
+	}
+
+	/**
+	 * Expand the "any" direction if given.
+	 *
+	 * @param  string $direction The direction name.
+	 * @return array
+	 */
+	public static function expand_direction( $direction ) {
+		if ( ! in_array( $direction, Relationship::$valid_directions ) ) {
+			throw new \OutOfBoundsException( 'Invalid direction. The direction must be one of: ' . implode( ', ', Relationship::$valid_directions ) . '.' );
+		}
+
+		if ( Relationship::DIRECTION_ANY === $direction ) {
+			return [ Relationship::DIRECTION_FROM, Relationship::DIRECTION_TO ];
+		}
+
+		return [ $direction ];
+	}
+
+	/**
+	 * Assert that given direction is a valid key.
+	 *
+	 * @param string $direction The direction key.
+	 */
+	public static function assert_direction( $direction ) {
+		$dirs = [ Relationship::DIRECTION_ANY, Relationship::DIRECTION_FROM, Relationship::DIRECTION_TO ];
+
+		if ( ! in_array( $direction, $dirs ) ) {
+			throw new \OutOfBoundsException( 'The direction must be one of:' . implode( ', ', $dirs ) );
+		}
 	}
 }

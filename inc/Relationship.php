@@ -1,7 +1,6 @@
 <?php
 namespace Awethemes\Relationships;
 
-use WP_Error;
 use Awethemes\Relationships\Side\Side;
 use Awethemes\Relationships\Direction\Direction;
 
@@ -108,160 +107,24 @@ class Relationship {
 	}
 
 	/**
-	 * Gets the storage instance.
+	 * Returns the relationships manager instance.
 	 *
-	 * @return \Awethemes\Relationships\Storage
+	 * @return \Awethemes\Relationships\Manager
 	 */
-	public function get_storage() {
-		return $this->manager->get_storage();
-	}
-
-	public function get_connected( $item ) {
-		$ids = $this->get_storage()->find( $this->get_name(), [
-			'from'   => $item,
-			'column' => 'rel_to',
-		] );
-
-		return wp_list_pluck( $ids, 'rel_to' );
+	public function get_manager() {
+		return $this->manager;
 	}
 
 	/**
-	 * Returns connections in a relationship.
+	 * Sets the relationships manager.
 	 *
-	 * @param array $args The query args.
-	 * @return array|null|object
+	 * @param  \Awethemes\Relationships\Manager $manager The relationships manager.
+	 * @return $this
 	 */
-	public function find( $args = [] ) {
-		return $this->get_storage()->find( $this->get_name(), $args );
-	}
+	public function set_manager( Manager $manager ) {
+		$this->manager = $manager;
 
-	/**
-	 * Determines if two objects has any connections.
-	 *
-	 * @param mixed $from The from item.
-	 * @param mixed $to   The to item.
-	 *
-	 * @return bool
-	 */
-	public function has( $from, $to ) {
-		list( $from, $to ) = array_filter(
-			func_get_args(), [ Utils::class, 'parse_object_id' ]
-		);
-
-		$count = $this->get_storage()->count( $this->get_name(), [
-			'to'    => $to,
-			'from'  => $from,
-			'limit' => 1,
-		] );
-
-		return $count > 0;
-	}
-
-	/**
-	 * Sync the intermediate tables with a list of IDs or collection of models.
-	 *
-	 * @param  mixed $ids
-	 * @param  bool  $detaching
-	 * @return array
-	 */
-	public function sync( $ids, $detaching = true ) {
-		$changes = [
-			'attached' => [],
-			'detached' => [],
-			'updated'  => [],
-		];
-	}
-
-	/**
-	 * Connect two items.
-	 *
-	 * @param mixed $from     The from item.
-	 * @param mixed $to       The to item.
-	 * @param array $metadata Optional. An array of metadata.
-	 *
-	 * @return int|\WP_Error
-	 */
-	public function connect( $from, $to, $metadata = [] ) {
-		if ( ! $direction = $this->find_direction( $from ) ) {
-			return new WP_Error( 'error', 'Cardinality problem (opposite).' );
-		}
-
-		// Get the directed instance.
-		$directed = $this->get_direction( $direction );
-
-		if ( ! $from = $directed->get_current()->parse_object_id( $from ) ) {
-			return new WP_Error( 'first_parameter', 'Invalid first parameter.' );
-		}
-
-		if ( ! $to = $directed->get_opposite()->parse_object_id( $to ) ) {
-			return new WP_Error( 'second_parameter', 'Invalid second parameter.' );
-		}
-
-		if ( $from === $to && ! $this->allow_self_connections() ) {
-			return new WP_Error( 'self_connection', 'Connection between an element and itself is not allowed.' );
-		}
-
-		if ( ! $this->allow_duplicate_connections() && $this->has( $from, $to ) ) {
-			return new WP_Error( 'duplicate_connection', 'Duplicate connections are not allowed.' );
-		}
-
-		/*
-		if ( 'one' === $directed->get_opposite()->get_cardinality() && $this->has_connections( $from ) ) {
-			return new WP_Error( 'cardinality_opposite', 'Cardinality problem (opposite).' );
-		}*/
-
-		/*if ( 'one' === $directed->get_current()->get_cardinality() ) {
-			if ( $this->flip_direction()->has_connections( $to ) ) {
-				return new WP_Error( 'cardinality_current', 'Cardinality problem (current).' );
-			}
-		}*/
-
-		$rel_id = $this
-			->get_storage()
-			->create( $this->get_name(), $from, $to );
-
-		if ( ! $rel_id ) {
-			// ...
-		}
-
-		return $rel_id;
-	}
-
-	/**
-	 * Disconnect two items.
-	 *
-	 * @param mixed $from The from item.
-	 * @param mixed $to   The to item.
-	 *
-	 * @return bool|WP_Error Boolean or WP_Error on failure.
-	 */
-	public function disconnect( $from, $to ) {
-		if ( ! $direction = $this->find_direction( $from ) ) {
-			return new WP_Error( 'error', 'Cardinality problem (opposite).' );
-		}
-
-		// Resolve the directed.
-		$directed = $this->get_direction( $direction );
-
-		if ( ! $from = $directed->get_current()->parse_object_id( $from ) ) {
-			return new WP_Error( 'first_parameter', 'Invalid first parameter.' );
-		}
-
-		if ( ! $to = $directed->get_opposite()->parse_object_id( $to ) ) {
-			return new WP_Error( 'second_parameter', 'Invalid second parameter.' );
-		}
-
-		$delete = $this->get_storage()->first(
-			$this->get_name(), compact( 'from', 'to' )
-		);
-
-		if ( ! is_null( $delete ) ) {
-		}
-
-		return $this->get_storage()->delete( $delete['id'] );
-	}
-
-	protected function check_objects() {
+		return $this;
 	}
 
 	/**
@@ -329,6 +192,8 @@ class Relationship {
 				return $this->direction->choose_direction( $direction );
 			}
 		}
+
+		return null;
 	}
 
 	/**
@@ -347,6 +212,15 @@ class Relationship {
 		$class = $this->direction->get_directed_class();
 
 		return new $class( $this, $direction );
+	}
+
+	/**
+	 * Returns the inverse (to) direction.
+	 *
+	 * @return \Awethemes\Relationships\Direction\Directed
+	 */
+	public function inverse() {
+		return $this->get_direction( static::DIRECTION_TO );
 	}
 
 	/**
@@ -440,23 +314,13 @@ class Relationship {
 	}
 
 	/**
-	 * Returns the relationships manager instance.
+	 * Handle call dynamic methods from directed.
 	 *
-	 * @return \Awethemes\Relationships\Manager
+	 * @param string $name      The method name.
+	 * @param array  $arguments The method arguments.
+	 * @return mixed
 	 */
-	public function get_manager() {
-		return $this->manager;
-	}
-
-	/**
-	 * Sets the relationships manager.
-	 *
-	 * @param  \Awethemes\Relationships\Manager $manager The relationships manager.
-	 * @return $this
-	 */
-	public function set_manager( Manager $manager ) {
-		$this->manager = $manager;
-
-		return $this;
+	public function __call( $name, $arguments ) {
+		return $this->get_direction()->{$name}( ...$arguments );
 	}
 }
