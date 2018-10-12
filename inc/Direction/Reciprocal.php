@@ -1,5 +1,4 @@
 <?php
-
 namespace Awethemes\Relationships\Direction;
 
 use Awethemes\Relationships\Relationship;

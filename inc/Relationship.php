@@ -9,6 +9,7 @@ class Relationship {
 	const DIRECTION_TO   = 'to';
 	const DIRECTION_ANY  = 'any';
 	const DIRECTION_FROM = 'from';
+
 	const ONE_TO_ONE     = 'one-to-one';
 	const ONE_TO_MANY    = 'one-to-many';
 	const MANY_TO_ONE    = 'many-to-one';
